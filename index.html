@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>TSEI 음성 입력</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--line:#e3e6ea;--ink:#16191d;--mute:#69717c;--accent:#ff6b1a;--red:#e5484d;--green:#1f9d55}
+  @media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--line:#2b3036;--ink:#eef1f4;--mute:#9aa3ad}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;min-height:100vh;display:flex;flex-direction:column;padding:16px;gap:12px}
+  h1{font-size:17px;margin:0;display:flex;align-items:center;gap:8px}
+  .mute{color:var(--mute);font-size:13px}
+  #mic{width:120px;height:120px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:46px;margin:6px auto 0;display:grid;place-items:center;box-shadow:0 6px 22px rgba(255,107,26,.35);cursor:pointer;transition:transform .15s}
+  #mic.on{background:var(--red);animation:pulse 1.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.5)}100%{box-shadow:0 0 0 26px rgba(229,72,77,0)}}
+  #st{text-align:center;font-size:14px;min-height:21px}
+  textarea{flex:1;min-height:180px;width:100%;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);padding:14px;font:inherit;resize:vertical}
+  .row{display:flex;gap:8px}
+  button.b{flex:1;padding:14px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+  button.b.pri{flex:1.6;background:var(--accent);border-color:var(--accent);color:#fff}
+  button.b:disabled{opacity:.45}
+  .warn{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:12px;font-size:14px}
+</style>
+</head>
+<body>
+<h1>🎤 TSEI 음성 입력 <span class="mute" style="font-weight:400">· 태성환경연구소 영업관리</span></h1>
+<div id="warn" class="warn" hidden></div>
+<button id="mic" aria-label="음성 입력 시작·멈춤">🎤</button>
+<div id="st" class="mute">버튼을 누르고 말씀하세요</div>
+<textarea id="tx" placeholder="여기에 말한 내용이 적힙니다. 직접 고쳐도 됩니다."></textarea>
+<div class="row">
+  <button class="b" id="clr">지우기</button>
+  <button class="b" id="cpy">📋 복사</button>
+  <button class="b pri" id="send">↩ 입력칸에 넣기</button>
+</div>
+<div class="mute" id="foot">말한 내용은 이 화면과 브라우저 음성 인식에만 쓰이고, 어디에도 저장되지 않습니다.</div>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const tx = $('#tx'), mic = $('#mic'), st = $('#st'), warn = $('#warn');
+  // 이 화면을 연 영업관리 웹앱(구글 앱스 스크립트 화면)에만 결과를 돌려준다
+  const q = new URLSearchParams(location.search);
+  const ORIGIN_OK = /^https:\/\/[\w-]+-script\.googleusercontent\.com$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$|^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/;
+  const back = q.get('o') || '';
+  const opener = window.opener && !window.opener.closed ? window.opener : null;
+  const canSend = !!(opener && ORIGIN_OK.test(back));
+  const pre = q.get('t'); if (pre) tx.value = pre;
+  if (!canSend) { $('#send').textContent = '📋 복사하고 닫기'; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, base = '', fin = '';
+  const show = (m, err) => { st.textContent = m; st.style.color = err ? 'var(--red)' : ''; };
+  if (!SR) {
+    mic.disabled = true; mic.style.opacity = .4;
+    warn.hidden = false;
+    warn.innerHTML = '이 브라우저는 음성 인식을 지원하지 않습니다.<br>· 휴대폰: <b>크롬</b>(안드로이드) 또는 <b>사파리</b>(아이폰)로 열어 주세요.<br>· 또는 아래 칸을 누르고 키보드의 🎤로 말해도 됩니다.';
+  }
+  const stop = () => { if (rec) rec.stop(); };
+  mic.onclick = () => {
+    if (!SR) return;
+    if (rec) { stop(); return; }
+    const r = new SR(); r.lang = 'ko-KR'; r.continuous = true; r.interimResults = true;
+    base = tx.value ? tx.value.replace(/\s*$/, ' ') : ''; fin = '';
+    r.onresult = e => {
+      let inter = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t + ' '; else inter += t; }
+      tx.value = base + fin + inter;
+    };
+    r.onstart = () => { mic.classList.add('on'); mic.textContent = '■'; show('듣고 있습니다… 다 말하면 다시 누르세요'); };
+    r.onend = () => { rec = null; mic.classList.remove('on'); mic.textContent = '🎤'; if (!/오류|허용/.test(st.textContent)) show(tx.value.trim() ? '끝났습니다. 확인 후 「입력칸에 넣기」를 누르세요' : '버튼을 누르고 말씀하세요'); };
+    r.onerror = e => {
+      const m = { 'not-allowed': '마이크 사용이 막혀 있습니다. 주소창 왼쪽 🔒 → 마이크 「허용」 후 다시 누르세요', 'service-not-allowed': '마이크 사용이 막혀 있습니다. 브라우저 설정에서 마이크를 허용해 주세요', 'audio-capture': '마이크를 찾지 못했습니다. 이 컴퓨터에 마이크가 연결돼 있는지 확인하세요', 'network': '인터넷 연결을 확인해 주세요 (음성 인식은 온라인에서만 됩니다)', 'no-speech': '소리가 들리지 않았습니다. 다시 눌러 말씀하세요' }[e.error] || ('음성 인식 오류: ' + e.error);
+      show(m, true);
+    };
+    rec = r;
+    try { r.start(); } catch (er) { rec = null; show('시작하지 못했습니다. 다시 눌러 주세요', true); }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(tx.value); return true; } catch (e) { tx.select(); try { return document.execCommand('copy'); } catch (e2) { return false; } } };
+  $('#clr').onclick = () => { tx.value = ''; tx.focus(); };
+  $('#cpy').onclick = async () => show(await copy() ? '복사했습니다. 입력칸에 붙여 넣으세요' : '복사하지 못했습니다. 글을 길게 눌러 복사하세요', false);
+  $('#send').onclick = async () => {
+    stop();
+    const text = tx.value.trim(); if (!text) { show('넣을 내용이 없습니다', true); return; }
+    if (canSend) {
+      try { opener.postMessage({ type: 'tsei-voice', text }, back); show('입력칸에 넣었습니다'); setTimeout(() => window.close(), 400); return; } catch (e) { /* 아래 복사로 */ }
+    }
+    show(await copy() ? '복사했습니다. 영업관리 화면으로 돌아가 입력칸에 붙여 넣으세요' : '글을 길게 눌러 복사해 주세요', false);
+  };
+  if (SR && q.get('auto') === '1') setTimeout(() => mic.click(), 300);
+})();
+</script>
+</body>
+</html>
