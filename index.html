@@ -49,6 +49,8 @@
   const canSend = !!(opener && ORIGIN_OK.test(back));
   const pre = q.get('t'); if (pre) tx.value = pre;
   if (!canSend) { $('#send').textContent = '📋 복사하고 닫기'; }
+  const SEARCH = q.get('s') === '1'; // 검색칸에서 열면: 말이 끝나면 바로 검색칸에 넣고 닫음
+  if (SEARCH) { document.title = 'TSEI 말로 검색'; $('#st').textContent = '찾을 이름이나 낱말을 말씀하세요'; $('#send').textContent = canSend ? '🔍 이걸로 검색' : '📋 복사하고 닫기'; }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, base = '', fin = '';
@@ -62,15 +64,15 @@
   mic.onclick = () => {
     if (!SR) return;
     if (rec) { stop(); return; }
-    const r = new SR(); r.lang = 'ko-KR'; r.continuous = true; r.interimResults = true;
-    base = tx.value ? tx.value.replace(/\s*$/, ' ') : ''; fin = '';
+    const r = new SR(); r.lang = 'ko-KR'; r.continuous = !SEARCH; r.interimResults = true;
+    base = SEARCH ? '' : tx.value ? tx.value.replace(/\s*$/, ' ') : ''; fin = '';
     r.onresult = e => {
       let inter = '';
       for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t + ' '; else inter += t; }
       tx.value = base + fin + inter;
     };
     r.onstart = () => { mic.classList.add('on'); mic.textContent = '■'; show('듣고 있습니다… 다 말하면 다시 누르세요'); };
-    r.onend = () => { rec = null; mic.classList.remove('on'); mic.textContent = '🎤'; if (!/오류|허용/.test(st.textContent)) show(tx.value.trim() ? '끝났습니다. 확인 후 「입력칸에 넣기」를 누르세요' : '버튼을 누르고 말씀하세요'); };
+    r.onend = () => { rec = null; if (SEARCH && canSend && tx.value.trim() && !/오류|허용/.test(st.textContent)) { $('#send').click(); return; } mic.classList.remove('on'); mic.textContent = '🎤'; if (!/오류|허용/.test(st.textContent)) show(tx.value.trim() ? '끝났습니다. 확인 후 「입력칸에 넣기」를 누르세요' : '버튼을 누르고 말씀하세요'); };
     r.onerror = e => {
       const m = { 'not-allowed': '마이크 사용이 막혀 있습니다. 주소창 왼쪽 🔒 → 마이크 「허용」 후 다시 누르세요', 'service-not-allowed': '마이크 사용이 막혀 있습니다. 브라우저 설정에서 마이크를 허용해 주세요', 'audio-capture': '마이크를 찾지 못했습니다. 이 컴퓨터에 마이크가 연결돼 있는지 확인하세요', 'network': '인터넷 연결을 확인해 주세요 (음성 인식은 온라인에서만 됩니다)', 'no-speech': '소리가 들리지 않았습니다. 다시 눌러 말씀하세요' }[e.error] || ('음성 인식 오류: ' + e.error);
       show(m, true);
